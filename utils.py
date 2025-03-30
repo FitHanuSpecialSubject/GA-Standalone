@@ -2,11 +2,10 @@ import platform
 import os
 import shutil
 import const as C
-import json
 import requests
-import hashlib
 import zipfile
 import tarfile
+from platformdirs import user_cache_dir
 
 
 def get_system_info():
@@ -161,3 +160,32 @@ def copy_directory(src, dst):
         shutil.rmtree(dst)  # Remove existing directory
 
     shutil.copytree(src, dst)
+
+
+def down_github_sources(url: str, branch: str, extract_dir: str):
+    """
+    Downloads the source code from a GitHub repository and extracts it to the target directory.
+
+    :param url: The GitHub repository URL.
+    :param branch: The branch name to download.
+    :param target_dir: The target directory to extract the source code.
+    """
+    
+    os.makedirs(extract_dir, exist_ok=True)
+    shutil.rmtree(extract_dir, ignore_errors=True)
+    
+    if url.endswith(".git"):
+        url = url[:-4]
+
+    archive_url = f"{url}/archive/refs/heads/{branch}.zip"
+    cache_dir = user_cache_dir("github_sources", appauthor=False)
+    os.makedirs(cache_dir, exist_ok=True)
+    archive_path = os.path.join(cache_dir, "source.zip")
+
+    download_file(archive_url, archive_path)
+    temp_extract_dir = os.path.join(cache_dir, "temp_extract")
+    os.makedirs(temp_extract_dir, exist_ok=True)
+    extract_file(archive_path, temp_extract_dir)
+    outermost_folder = next(os.walk(temp_extract_dir))[1][0]
+    outermost_folder_path = os.path.join(temp_extract_dir, outermost_folder)
+    copy_directory(outermost_folder_path, extract_dir)

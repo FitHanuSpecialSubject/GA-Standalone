@@ -1,4 +1,4 @@
-SUPPORTED_MACHINES = ["x86_64"]
+SUPPORTED_MACHINES = ["x86_64", "amd64"]
 SUPPORTED_ARCHS = ["64bit"]
 SUPPORTED_OS = ["linux", "windows"]
 

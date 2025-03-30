@@ -1,6 +1,7 @@
 import json
 import shutil
 from utils import ( 
+    down_github_sources,
     copy_directory,
     find_jar,
     get_system_info,
@@ -35,6 +36,7 @@ if not is_valid_system_requirements():
 
 
 JDK_DIR = os.path.join(WORKING_DIR, "resources", "jdk")
+os.makedirs(JDK_DIR, exist_ok=True)
 
 system = get_system_info()["system"]
 if system == "windows":
@@ -75,14 +77,7 @@ subprocess.run([JAVA_ENTRY, "--version"], check=True)
 
 print("Downloading BE source code...")
 clear_directory(BE_SOURCE_DIR)
-args = [
-    "git", "clone",
-    "--depth", "1",
-    "--branch", C.SOURCE_GIT_BRANCH,
-    C.SOURCE_GIT_URL,
-    BE_SOURCE_DIR
-]
-subprocess.run(args, check=True)
+down_github_sources(C.SOURCE_GIT_URL, C.SOURCE_GIT_BRANCH, BE_SOURCE_DIR)
 
 
 #
