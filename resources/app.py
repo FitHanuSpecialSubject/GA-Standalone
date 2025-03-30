@@ -1,12 +1,39 @@
+import http.server
 import os
+import socketserver
 import subprocess
 import sys
+import threading
 import time
 import platform
 import json
+import psutil
+import multiprocessing
 from PyQt6.QtCore import QUrl
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout
 from PyQt6.QtWebEngineWidgets import QWebEngineView
+
+
+MAX_HEAP_SIZE = 4096
+MIN_HEAP_SIZE = 512
+MAX_HEAP_THRESHOLD = 0.5
+FRONTEND_PORT = 3000
+
+
+def get_java_heap_sizes():
+    total_ram_mb = psutil.virtual_memory().total // (1024 * 1024)
+    
+    xmx = max(512, total_ram_mb * MAX_HEAP_THRESHOLD)
+    
+    if xmx > MAX_HEAP_SIZE:
+        xmx = MAX_HEAP_SIZE
+
+    xms = xmx / 4
+    
+    if xms < MIN_HEAP_SIZE:
+        xms = MIN_HEAP_SIZE
+    
+    return int(xms), int(xmx)
 
 def check_library_installed(lib_name):
     try:
@@ -30,7 +57,7 @@ with open(entries_path, "r", encoding="utf-8") as f:
 
 JDK_PATH = os.path.join(BASE_DIR, data["jdk"])
 BACKEND_JAR = os.path.join(BASE_DIR, data["backend"])
-FRONTEND_PATH = os.path.join(BASE_DIR, data["frontend"])
+FRONTEND_PATH = os.path.join(BASE_DIR, "frontend")
 
 print("JDK Path:", JDK_PATH)
 print("Backend JAR Path:", BACKEND_JAR)
@@ -43,22 +70,51 @@ path_separator = ";" if sys.platform.lower().startswith("win") else ":"
 env["PATH"] = os.path.join(JDK_PATH, "bin") + path_separator + env.get("PATH", "")
 
 # Start Spring Boot Backend
-def start_backend():
+def run_backend():
+    xms, xmx = get_java_heap_sizes()
+    xms_arg = f"-Xms{xms}m"
+    xmx_arg = f"-Xmx{xmx}m"
     print("Starting backend...")
+    args = ["java", "-jar", BACKEND_JAR, xms_arg, xmx_arg]
+    print(f"Backend arguments: {' '.join(args)}")
     backend_process = subprocess.Popen(
-        ["java", "-jar", BACKEND_JAR],
+        args=args,
         cwd=BASE_DIR,
         env=env,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1 
     )
-    return backend_process
+    for line in iter(backend_process.stdout.readline, ''):
+        print(f"[BACKEND] {line}", end="")
+
+    backend_process.stdout.close()
+    backend_process.wait()
+
+
+def start_local_httpserver():
+    os.chdir(FRONTEND_PATH)
+    handler = http.server.SimpleHTTPRequestHandler
+    with socketserver.TCPServer(("127.0.0.1", FRONTEND_PORT), handler) as httpd:
+        print(f"Frontend server running at http://127.0.0.1:{FRONTEND_PORT}/")
+        httpd.serve_forever()
+
+def run_frontend():
+    """Start the frontend HTTP server and keep the thread alive."""
+    server_thread = threading.Thread(target=start_local_httpserver, daemon=True)
+    server_thread.start()
+
+    while True:  # Keep the frontend process running
+        time.sleep(1)
+
 
 # Start PyQt WebView for Frontend
-class WebApp(QWebEngineView):
+class MainWindow(QWebEngineView):
     def __init__(self):
         super().__init__()
-        self.load(QUrl.fromLocalFile(FRONTEND_PATH))
+        self.setWindowTitle("Hơi đẹp trai")
+        self.load(QUrl(f"http://127.0.0.1:{FRONTEND_PORT}/index.html"))
         self.showMaximized()
 
 # Launch App
@@ -70,13 +126,22 @@ if __name__ == "__main__":
             print("Missing libraries:", missing_libs)
         else:
             print("All required libraries are installed!")
-    backend_proc = start_backend()
-    time.sleep(3)  # Wait for backend to start
 
-    app = QApplication(sys.argv)
-    web = WebApp()
-    web.show()
+    backend_process = multiprocessing.Process(target=run_backend)
+    frontend_process = multiprocessing.Process(target=run_frontend)
+    backend_process.start()
+    time.sleep(2)  # Give backend time to start
+    frontend_process.start()
     
+    # empty args [] for PyQt
+    app = QApplication(sys.argv)
+    web = MainWindow()
+
+    # Wait for both processes
+    # backend_process.join()
+    # frontend_process.join()
+
     exit_code = app.exec()
-    backend_proc.terminate()
+    backend_process.terminate()
+    frontend_process.terminate()
     sys.exit(exit_code)
