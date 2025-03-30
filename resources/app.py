@@ -8,6 +8,7 @@ import time
 import platform
 import json
 import psutil
+import signal
 import multiprocessing
 from PyQt6.QtCore import QUrl
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout
@@ -18,6 +19,7 @@ MAX_HEAP_SIZE = 4096
 MIN_HEAP_SIZE = 512
 MAX_HEAP_THRESHOLD = 0.5
 FRONTEND_PORT = 3000
+BACKEND_PORT = 8080
 
 
 def get_java_heap_sizes():
@@ -108,12 +110,25 @@ def run_frontend():
     while True:  # Keep the frontend process running
         time.sleep(1)
 
+def kill_process_on_port(port):
+    for conn in psutil.net_connections(kind='inet'):
+        if conn.laddr.port == port and conn.pid:
+            try:
+                print(f"Killing process {conn.pid} on port {port}...")
+                if os.name == 'nt':  # Windows
+                    os.system(f"taskkill /F /PID {conn.pid}")
+                else:  # Linux/macOS
+                    os.kill(conn.pid, signal.SIGKILL)
+                print(f"Process {conn.pid} on port {port} killed.")
+            except Exception as e:
+                print(f"Error killing process on port {port}: {e}")
+
 
 # Start PyQt WebView for Frontend
 class MainWindow(QWebEngineView):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Hơi đẹp trai")
+        self.setWindowTitle("solver-aplication-standalone - @Hơi đẹp trai")
         self.load(QUrl(f"http://127.0.0.1:{FRONTEND_PORT}/index.html"))
         self.showMaximized()
 
@@ -144,4 +159,12 @@ if __name__ == "__main__":
     exit_code = app.exec()
     backend_process.terminate()
     frontend_process.terminate()
+    
+    # might not be necessary, but just in case
+    try:
+        kill_process_on_port(FRONTEND_PORT)
+        kill_process_on_port(BACKEND_PORT)
+    except Exception as e:
+        print(f"Error killing processes: {e}")
+
     sys.exit(exit_code)
