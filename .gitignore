@@ -1,0 +1,5 @@
+resources/*.jar
+resources/frontend/*
+resources/jdk/*
+resources/be_source/*
+resources/entries.json
